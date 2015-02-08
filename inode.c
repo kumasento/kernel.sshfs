@@ -4,6 +4,7 @@
 #include <linux/init.h>
 #include <linux/slab.h>
 #include <linux/pagemap.h>
+#include <linux/mm.h>
 
 #include "sshfs.h"
 
@@ -36,8 +37,8 @@ struct inode *sshfs_get_inode(struct super_block *sb,
                 init_special_inode(inode, mode, dev);
                 break;
             case S_IFREG:
-                //inode->i_op  = &sshfs_file_inode_operations;
-                //inode->i_fop = &sshfs_file_operations;
+                inode->i_op  = &sshfs_file_inode_operations;
+                inode->i_fop = &sshfs_file_operations;
                 break;
             case S_IFDIR:
                 inode->i_op = &sshfs_dir_inode_operations;
