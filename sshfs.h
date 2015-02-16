@@ -3,17 +3,19 @@
 #define SSHFS_H__
 
 #define SSHFS_MAGIC 0x20150208
+#define MAX_HOST_LENGTH 20
+#define MAX_DENTRY_LINK_LENGTH 512
+#define MAX_DENTRY_NAME_LENGTH 64
+#define MAX_DENTRY_NAME_NUMBER 8
+
+ssize_t sshfs_file_read(struct file* flip, char __user *buf, size_t len, loff_t *ppos)
+{
+    printk(KERN_INFO "Entering %s\n", __FUNCTION__);
+    return 0;
+}
 
 const struct file_operations sshfs_file_operations = {
-    .read         = do_sync_read,
-    .write        = do_sync_write,
-    .aio_read     = generic_file_aio_read,
-    .aio_write    = generic_file_aio_write,
-    .mmap         = generic_file_mmap,
-    .fsync        = noop_fsync,
-    .splice_read  = generic_file_splice_read,
-    .splice_write = generic_file_splice_write,
-    .llseek       = generic_file_llseek,
+    .read    = sshfs_file_read,
 };
 
 const struct inode_operations sshfs_file_inode_operations = {
