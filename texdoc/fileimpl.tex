@@ -1,0 +1,63 @@
+\section{File System Implementation}
+
+\subsection{File System Type}
+It's required to provide a \lstinline{file_system_type} parameter if you want to register your file system.\\
+
+\begin{lstlisting}
+static struct file_system_type sshfs_fs_type = {
+    .name     = "kernelsshfs",
+    .mount    = sshfs_mount,
+    .kill_sb  = sshfs_kill_sb,
+    .fs_flags = FS_USERNS_MOUNT, // what for?
+};
+
+struct dentry *sshfs_mount(struct file_system_type *fs_type,                           int flags,                           const char *dev_name,                           void *data){    return mount_nodev(fs_type, flags, data, sshfs_fill_super);}static void sshfs_kill_sb(struct super_block *sb){    kill_litter_super(sb);}
+\end{lstlisting}
+
+\subsection{Super Block}
+
+Look at the \lstinline{sshfs_mount} function, which will do \lstinline{mount_nodev}. \lstinline{mount_nodev} denotes our file system does not need a backend block device. And \lstinline{mount_nodev} need a function \lstinline{sshfs_fill_super} to fulfill the properties of the super block of our file system.
+
+It's the definition of the \emph{super block operations}. The functions are provided by default Linux VFS super block operations.
+\begin{lstlisting}
+static const struct super_operations sshfs_ops = {    .statfs       = simple_statfs,    .drop_inode   = generic_delete_inode,    .show_options = generic_show_options,};
+\end{lstlisting}
+
+Here the \lstinline{sshfs_get_inode} will not be covered in this document, you could easily find it in the \lstinline{sshfs_inode.c} file. So the basic operations \lstinline{sshfs_fill_super} does are just setting:
+\begin{enumerate}
+\item \lstinline{s_op}
+\item \lstinline{s_root} 
+\item \lstinline{s_magic}
+\end{enumerate}
+\begin{lstlisting}
+int sshfs_fill_super(struct super_block *sb, void *data, 
+	int silent){    sb->s_blocksize      = PAGE_CACHE_SIZE;    sb->s_blocksize_bits = PAGE_CACHE_SHIFT;    sb->s_magic          = SSHFS_MAGIC;    sb->s_op             = &sshfs_ops;    inode = sshfs_get_inode(sb, NULL, 
+		S_IFDIR|SSHFS_DEFAULT_MODE, 0);    sb->s_root = d_make_root(inode);	...}
+\end{lstlisting}
+
+\subsection{File and Inode Operations}
+
+In order to satisfy our "virtual environment" requirement, we need to:
+\begin{enumerate}
+\item build \lstinline{inode} both on host and remote.
+\item only do file operations on remote.
+\item querying the host-only inodes.
+\end{enumerate}
+
+And the code definition of inode operations, and only the first 4 operations are self-defined. All the other operations are default operations which means they will not visit the remote information.
+
+\begin{lstlisting}[title=\bfseries inode operations]
+static const struct inode_operations 
+	sshfs_dir_inode_operations = {    .mknod  = sshfs_mknod,    .mkdir  = sshfs_mkdir,    .rmdir  = sshfs_rmdir,    .create = sshfs_create,    .lookup = simple_lookup,    .link   = simple_link,    .unlink = simple_unlink,    .rename = simple_rename,};
+\end{lstlisting}
+
+File operations are much more simplified, only \lstinline{read}, \lstinline{write} and \lstinline{llseek} are defined.
+
+\begin{lstlisting}[title=\bfseries file operations]
+const struct file_operations 
+	sshfs_file_operations = {    .read    = sshfs_file_read,    .write   = sshfs_file_write,    .llseek  = sshfs_llseek,    .fsync   = noop_fsync,};
+\end{lstlisting}
+
+All the self-defined operations are based on one function, \lstinline{netlink_send_command}, to send the command message like "read dir1/file1" to the netlink module. I'll cover this in the next section.
+
+

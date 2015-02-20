@@ -1,0 +1,66 @@
+\section{Netlink Communication}
+
+Only 2 APIs are important in this section.
+
+\subsection{Send Command and Stall}
+
+\begin{lstlisting}
+static int netlink_send_command(cmdtype cmd,                                char *params,                                struct iovec *iov){	...    cmd_msg_buffer.cmd    = 
+		kzalloc(sizeof(char) * cmdstr_len, GFP_KERNEL);    cmd_msg_buffer.cmdlen = cmdstr_len;    cmd_msg_buffer.exec   = false;    cmd_msg_buffer.msglen = 0;    cmd_msg_buffer.msg    = NULL;    strcpy(cmd_msg_buffer.cmd, cmdstr);    cmd_msg_buffer.ready  = true;    while(!cmd_msg_buffer.exec)        msleep(1000);
+	...    iov->iov_len = cmd_msg_buffer.msglen+1;    iov->iov_base =         (char *) kzalloc((iov->iov_len), GFP_KERNEL);    strcpy(iov->iov_base, cmd_msg_buffer.msg);    
+	...    kzfree(cmd_msg_buffer.msg);    cmd_msg_buffer.msg = NULL;    return 0;}
+\end{lstlisting}
+
+In this function, we'll first fulfill the \lstinline{cmd} buffer in the global parameter:\\ \lstinline{cmd_msg_buffer}, and set the \lstinline{ready} bool to \lstinline{true}. Then this procedure will stall until the \lstinline{exec} is \lstinline{true}.
+
+After the stall is finished, this function will copy back the message from the \lstinline{msg} buffer. How to use that message is specified by different methods. Take the \lstinline{sshfs_file_read} as an instance:
+\newpage
+\begin{lstlisting}[title=\bfseries file read]
+static ssize_t sshfs_file_read(struct file* flip, 
+	char __user *buf, size_t len, loff_t *ppos){ 	...  
+    netlink_send_command(Cmd_read, params, iov);
+        if(copy_to_user(buf, (void*)iov->iov_base, iov->iov_len))        return -EFAULT;    *ppos += iov->iov_len;    ret = (ssize_t) iov->iov_len - 1;    kzfree(params);    kzfree(iov);    return ret;}
+\end{lstlisting}
+
+This one just copy the received message to the buffer required by the \lstinline{read()} VFS API.
+
+\subsection{Message Receiving}
+
+It's necessary to issue that there're 3 steps in this module:
+\begin{enumerate}
+\item First of all, this method will be called only if there's a message sent from SSH daemon. The message is contained in \lstinline{struct sk_buff *skb}.
+\item This method will parse the message from SSH daemon next, there're 3 kind of status:
+	\begin{center}
+	\begin{tabular}{|l|l|}
+	\hline
+	Status	& Meaning\\
+	\hline
+	READY 		& SSH daemon is working and has nothing to do.\\
+	message		& SSH daemon is transferring message and \\
+				& the content of received message have not yet finished.\\
+	DONE 		& SSH daemon has finished transferring.\\
+	\hline
+	\end{tabular}
+	\end{center}
+\item At last, send the response to SSH Daemon by \lstinline{nlmsg_unicase}.
+	\begin{center}
+	\begin{tabular}{|l|l|}
+	\hline
+	Status	& Meaning\\
+	\hline
+	NOTHING 		& If SSH daemon is ready and the file system has no \\
+				& workload\\
+	COPIED		& If SSH daemon is transferring message and the data \\
+				& is copied.\\ 
+	OK 			& SSH daemon has finished transferring and response to \\
+				& it.\\
+	\hline
+	\end{tabular}
+	\end{center}
+\end{enumerate}
+
+The codes are listed below:
+\newpage
+\begin{lstlisting}[title=\bfseries Message Receiving]
+static void netlink_recv_msg(struct sk_buff *skb){    struct nlmsghdr *nlh;    int pid;	...   
+    nlh = (struct nlmsghdr*) skb->data;    pid = nlh->nlmsg_pid;    recvmsg = (char *) nlmsg_data(nlh);    if (!strcmp(recvmsg, recv_ready_str))        ... // When SSH Daemon is Ready    else if (!strcmp(recvmsg, recv_done_str))    	... // When SSH Daemon is Done    else    	... // When SSH Daemon is transferring data.    skb_out = nlmsg_new(msg_size, 0);    nlh = nlmsg_put(skb_out, 0, 0, NLMSG_DONE, msg_size, 0);    NETLINK_CB(skb_out).dst_group = 0;    strncpy(nlmsg_data(nlh), msg, msg_size);    res = nlmsg_unicast(nl_sk, skb_out, pid);}\end{lstlisting}

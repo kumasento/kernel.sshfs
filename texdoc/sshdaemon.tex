@@ -1,0 +1,58 @@
+\section{SSH Daemon}
+
+The SSH daemon is just like a bridge, which lies between the kernel mode \lstinline{netlink} module, and the user mode \lstinline{libssh} library. 
+
+\subsection{Communicate with Netlink}
+Kernel mode netlink module could only response once SSH daemon send message to it. And SSH send message function follows these steps:
+\begin{enumerate}
+\item Initialize \lstinline{struct nlmsghdr} by assigning \lstinline{nlmsg_len}, \lstinline{nlmsg_pid} and \lstinline{nlmsg_flags}.
+\item Initialize message itself. Send the message and stall.
+\item Once received the message from the kernel, do the parsing work to get what to do next.
+\end{enumerate}
+\newpage
+\begin{lstlisting}[title=\bfseries Communicate with Netlink]
+char * send_recv_netlink_portal(char *msg_str, int msg_len){    nlh = (struct nlmsghdr *) malloc(NLMSG_SPACE(MAX_PAYLOAD));    memset(nlh, 0, NLMSG_SPACE(MAX_PAYLOAD));    nlh->nlmsg_len   = NLMSG_SPACE(MAX_PAYLOAD);    nlh->nlmsg_pid   = getpid();    nlh->nlmsg_flags = 0;    strncpy(NLMSG_DATA(nlh), msg_str, msg_len);    iov.iov_base    = (void *)nlh;    iov.iov_len     = nlh->nlmsg_len;    msg.msg_name    = (void *)&dest_addr;    msg.msg_namelen = sizeof(dest_addr);    msg.msg_iov     = &iov;    msg.msg_iovlen  = 1;    sendmsg(sock_fd, &msg, 0);	\\ will stall here    recvmsg(sock_fd, &msg, 0);    return (char *)NLMSG_DATA(nlh);}
+\end{lstlisting}
+
+There's a infinite loop in the \lstinline{main()} function of SSH daemon:
+
+\begin{lstlisting}[title=\bfseries Main loop]
+while (1){    char *recv =
+        send_recv_netlink_portal("READY", strlen("READY"));    if (!strcmp(recv, "ERROR"))        ...        
+    else if (!strcmp(recv, "NOTHING"))        sleep(1);    else    {
+        struct iovec *iov = 
+            sftp_execute(ssh_s, sftp_s, recv);        ...
+        recv = 
+            send_recv_netlink_portal("DONE", strlen("DONE"));        if (strcmp(recv, "OK"))            exit(1);        sleep(1);    }}
+\end{lstlisting}
+
+It's clear that this daemon will first send \lstinline{READY}, and do different tasks by specifying the different responses.
+If SSH daemon is sure that it'll do some work on the remote machine, it'll call \lstinline{sftp_execute}.
+
+\subsection{Communicate with SSH Library}
+
+There's no need to show some details about the libSSH library, so here I'll just take one function for instance: \lstinline{sftp_execute_mkdir}. This function will be called only if the command sent by netlink module is something like: \lstinline{mkdir dir1}. 
+
+\begin{lstlisting}[title=\bfseries Remote Mkdir]
+int sftp_execute_mkdir(ssh_session ssh, 
+                       sftp_session sftp, 
+                       char *dirname){    int rc;    rc = sftp_mkdir(sftp, dirname, S_IRWXU);    if (rc != SSH_OK)    {        if (sftp_get_error(sftp) != SSH_FX_FILE_ALREADY_EXISTS)        {            fprintf(stderr, "Can't create directory: %s\n",                    ssh_get_error(ssh));            return rc;        }    }    return rc;}
+\end{lstlisting}
+
+As you can see, the key function is \lstinline{sftp_mkdir}. 
+
+Another example is \lstinline{sftp_execute_read}:
+
+\begin{lstlisting}[title=\bfseries Remote Read]
+int sftp_execute_read(ssh_session ssh, 
+                      sftp_session sftp, 
+                      char *params, char **msg){   ....    file = sftp_open(sftp, filename, access_type, 0);    sftp_seek(file, offset);    for (;;)    {        nbytes = sftp_read(file, buffer, sizeof(buffer));        ....        if (nbytes == 0) break;        else if (nbytes < 0) return SSH_ERROR;        int buflen = strlen(buffer);        int msglen = (*msg != NULL) ? strlen(*msg) : 0;        msglen += buflen;        msglen ++;        ....
+    }    rc = sftp_close(file);    return rc;}
+\end{lstlisting}
+
+The data received from remote operation \lstinline{sftp_read} will be inserted into local buffer, and send back to netlink once the transfer is finished. 
+
+After the netlink received the message, it will copy the content to the \lstinline{read()} API's buffer.
+
+
+

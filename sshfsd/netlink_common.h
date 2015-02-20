@@ -7,7 +7,7 @@
 #include <string.h>
 #include <stdio.h>
 
-#define MAX_PAYLOAD 1023 /* maximum payload size*/
+#define MAX_PAYLOAD 16384 /* maximum payload size*/
 
 struct sockaddr_nl src_addr;
 struct sockaddr_nl dest_addr;
@@ -41,7 +41,7 @@ int init_netlink_portal()
 
 char * send_recv_netlink_portal(char *msg_str, int msg_len)
 {
-    nlh = (struct nlmsghdr *)malloc(NLMSG_SPACE(MAX_PAYLOAD));
+    nlh = (struct nlmsghdr *) malloc(NLMSG_SPACE(MAX_PAYLOAD));
     memset(nlh, 0, NLMSG_SPACE(MAX_PAYLOAD));
     nlh->nlmsg_len   = NLMSG_SPACE(MAX_PAYLOAD);
     nlh->nlmsg_pid   = getpid();

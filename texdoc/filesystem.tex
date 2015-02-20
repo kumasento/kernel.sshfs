@@ -1,0 +1,51 @@
+\section{File System Architecture}
+
+\subsection{Module and File System}
+Obviously, implementing a file system on Linux is just writing a \emph{module}. Why is that? The idea is, you'll never know there's such a file system unless you read some files in it, write data to it, or listing the directories under the mounting point of that file system. All these functionalities are provided by the standard \emph{virtual file system(VFS)} APIs, and the way we define a unique file system is by referring the fuction pointers to our self-defined functions. For example, if you want to count the number of executed read operations, you could define a read function:\\
+
+\begin{lstlisting}
+// definition
+static ssize_t read(struct file* flip, char __user *buf, 
+			size_t len, loff_t *ppos)
+{
+	...
+	printk(KERN_INFO "Trying to read\n");
+	... 
+}
+\end{lstlisting}
+
+And refer to it:\\
+%\newpage
+\begin{lstlisting}
+// refering
+struct file_operations file_operations = {
+	.read = read,
+	...
+};
+
+file->f_op = file_operations;
+\end{lstlisting}
+
+How could Linux VFS know there's such a \lstinline{read} function? \emph{By defining it in the module}. So that's why I say: "implementing a file system is just writing a module."
+
+\subsection{Mounting}
+
+After we've defined the function pointers' reference, we need to put our file system under one directory and register the file system. \emph{Mounting} is the procedure of making the files or directories under the \emph{mounting point} directory use the VFS APIs provided by our file system, and registering is just a simple procedure to let the operating system know that there's such a file system.
+
+Where to do the mounting and registering procedure? In the \lstinline{init} call of our module:\\
+
+\begin{lstlisting}
+static int __init init_fs(void )
+{
+    int err;
+	
+// Here the register_filesystem() function will call
+// our mounting function().
+    err = register_filesystem(&fs_type);
+
+    return err;
+}
+\end{lstlisting}
+
+It's worthy to denote that there're 2 types of mounting: \lstinline{mount_bdev} and \lstinline{mount_nodev}. If you use the previous one, then all the \lstinline{read} and \lstinline{write} functions could operate on a block device, while the later one couldn't. 
+

@@ -9,7 +9,7 @@
 #include <net/net_namespace.h>
 
 #define NLDEBUG
-#define NETLINK_SEND_COMMAND_LENGTH 1024
+#define NETLINK_SEND_COMMAND_LENGTH 16383
 #define NETLINK_SEND_COMMAND_QUEUE_SIZE 128
 
 static struct sock *nl_sk = NULL;
@@ -30,7 +30,8 @@ typedef enum {
     Cmd_mkdir,
     Cmd_rmdir,
     Cmd_create,
-    Cmd_read
+    Cmd_read,
+    Cmd_write
 } cmdtype;
 
 static int netlink_send_command(cmdtype cmd,
@@ -52,8 +53,11 @@ static int netlink_send_command(cmdtype cmd,
         case Cmd_create:
             cmdhdr = (char *) "create";
             break;
-        case Cmd_read;
+        case Cmd_read:
             cmdhdr = (char *) "read";
+            break;
+        case Cmd_write:
+            cmdhdr = (char *) "write";
             break;
     }
 
@@ -78,12 +82,12 @@ static int netlink_send_command(cmdtype cmd,
     cmd_msg_buffer.cmd    = kzalloc(sizeof(char) * cmdstr_len, GFP_KERNEL);
     cmd_msg_buffer.cmdlen = cmdstr_len;
     cmd_msg_buffer.exec   = false;
-    cmd_msg_buffer.ready  = true;
     cmd_msg_buffer.msglen = 0;
     cmd_msg_buffer.msg    = NULL;
 
     strcpy(cmd_msg_buffer.cmd, cmdstr);
 
+    cmd_msg_buffer.ready  = true;
     while(!cmd_msg_buffer.exec)
         msleep(1000);
 
@@ -93,9 +97,21 @@ static int netlink_send_command(cmdtype cmd,
     switch (cmd)
     {
         case Cmd_read:
-
+            if (iov != NULL)
+            {
+                iov->iov_len = cmd_msg_buffer.msglen+1;
+                iov->iov_base =
+                    (char *) kzalloc(sizeof(char)*(iov->iov_len), GFP_KERNEL);
+                strcpy(iov->iov_base, cmd_msg_buffer.msg);
+            }
+            break;
+        default:
+            break;
     }
 
+#ifdef NLDEBUG
+    printk(KERN_INFO "Done\n");
+#endif
 
     kzfree(cmd_msg_buffer.msg);
     cmd_msg_buffer.msg = NULL;
@@ -152,6 +168,7 @@ static void netlink_recv_msg(struct sk_buff *skb)
 
         cmd_msg_buffer.exec = true;
         cmd_msg_buffer.ready = false;
+
         msg = (char *) "OK";
         msg_size = strlen(msg);
     }
@@ -166,6 +183,7 @@ static void netlink_recv_msg(struct sk_buff *skb)
         strcpy(buf+cmd_msg_buffer.msglen, recvmsg);
         kzfree(cmd_msg_buffer.msg);
         cmd_msg_buffer.msg = buf;
+        cmd_msg_buffer.msglen = strlen(buf);
 
         msg = (char *) "COPIED";
         msg_size = strlen(msg);

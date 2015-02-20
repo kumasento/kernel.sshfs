@@ -1,0 +1,7 @@
+
+\section{Kernel-User Communication}
+
+Linux VFS functions should be run under the \emph{kernel mode}, which has the highest previledge, while at the same time, has less utilities. Several useful networking libraries are all under \emph{user mode}. Due to this need, we have to build a communication mechanism between the \emph{kernel mode} and the \emph{user mode}. 
+
+Socket could do the job, but we want it to be simpler. Then we have \emph{Netlink} module. \emph{Netlink} is a special family of socket protocols, which is designed to provide communication between \emph{kernel mode} and \emph{user mode}.
+

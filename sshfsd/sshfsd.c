@@ -96,7 +96,9 @@ int main(int argc, char *argv[])
                     cur_idx+=MAX_PAYLOAD)
             {
                 char *base = iov->iov_base + cur_idx;
-                int len = iov->iov_len - cur_idx;
+                int len = (cur_idx+MAX_PAYLOAD < iov->iov_len)
+                            ? MAX_PAYLOAD
+                            : iov->iov_len - cur_idx;
 
                 printf("chunk: %s len: %d\n", base, len);
                 recv = send_recv_netlink_portal(base,len);
@@ -106,6 +108,7 @@ int main(int argc, char *argv[])
             recv = send_recv_netlink_portal("DONE", strlen("DONE"));
             if (strcmp(recv, "OK"))
                 exit(1);
+            sleep(1);
         }
     }
 

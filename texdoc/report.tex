@@ -1,0 +1,20 @@
+\documentclass[10pt,a4paper]{report}
+
+\usepackage{fontspec}
+\setromanfont{PT Serif}
+\setsansfont{PT Sans}
+\setmonofont{Consolas}
+
+\usepackage{listings}
+\newfontfamily\Code{Consolas}
+\lstset{language=C,
+		numbers=left, 
+		basicstyle=\Code\small, 
+		frame=single}
+
+\begin{document}
+\input{title.tex}
+\input{abstract.tex}
+\input{body.tex}
+
+\end{document}

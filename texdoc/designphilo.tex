@@ -1,0 +1,22 @@
+\section {Design Philosophy}
+
+The goal of our YaNFS has 3 points, which have been listed previously:
+\begin{description}
+\item[Virtual Environment] The host machine couldn't know any other files on the remote machine, which means you need to build your own directory tree on the host("directory tree" is not a rigorous definition, it's just referring the inodes and dentries).
+\item[Kernel-User Mode] The file system is built in kernel mode while the remote connection is built in user mode.
+\item[SSH Connection] The remote connection is established through SSH and SFTP protocol.
+\end{description}
+
+And the whole project will be built on 3 different layers: \emph{file system}, \emph{communication} and \emph{SSH connection}. It's rather good to understand this through an example.
+
+Here I'd like to read a file on the remote machine:
+\begin{enumerate}
+\item Call \lstinline{read()} in kernel mode.
+\item Translate from dentry hierachy links to file pathname string.
+\item Build message string "read [filepath]", and stall the kernel mode \lstinline{read()}.
+\item SSH daemon come to ask if there's any command to execute, and the message string found.
+\item According to the message string, call \lstinline{sftp_read(filepath, buf, size)} to store the read data to \lstinline{buf}.
+\item Send back read data to the kernel.
+\item Kernel mode \lstinline{read()} found the message, and copy to the \lstinline{buf} parameter provided by the function call by \lstinline{copy_to_user()}.
+\end{enumerate}
+
